@@ -21,9 +21,9 @@ abstract class Expression {
   }
   abstract class Literal extends Expression
     case class StringLit(string:String) extends Literal {
-      def toCode = string.replaceAll("\"", "\\\"")
-                         .replaceAll("\n", "\\\n")
-                         .replaceAll("\t", "\\\t")
+      def toCode = "\"" + string.replaceAll("\"", "\\\"")
+                                .replaceAll("\n", "\\\n")
+                                .replaceAll("\t", "\\\t") + "\""
     }
     abstract class NumericLit extends Literal
       case class IntLit(int:Int) extends NumericLit {

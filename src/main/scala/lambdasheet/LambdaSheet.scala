@@ -5,13 +5,14 @@ import javafx.scene.layout.VBox
 import javafx.scene.Scene
 import javafx.scene.paint.Color
 import javafx.collections.FXCollections
-import javafx.event.{ActionEvent, EventHandler}
 import javafx.geometry.Insets
-import javafx.scene.input.{KeyEvent, KeyCode}
 import javafx.util.Callback
+import javafx.beans.property.{SimpleObjectProperty, SimpleStringProperty}
+import javafx.scene.control.TableColumn.CellEditEvent
 import javafx.scene.control._
 import cell.PropertyValueFactory
-import javafx.beans.property.{SimpleObjectProperty, SimpleStringProperty}
+import javafx.event.{EventType, ActionEvent, EventHandler}
+import javafx.scene.input.{MouseEvent, KeyEvent, KeyCode}
 
 object LambdaSheet {
 
@@ -39,11 +40,32 @@ class LambdaSheet extends javafx.application.Application {
 
     val tv = new TableView[Binding](bindings)
 
+    tv.setOnKeyReleased(new EventHandler[KeyEvent] {
+      def handle(p1: KeyEvent) {
+        if(p1.getCode.eq(KeyCode.BACK_SPACE) || p1.getCode.eq(KeyCode.DELETE)) {
+          val ind = tv.getSelectionModel.getSelectedIndex
+          tv.getItems.remove(ind)
+        }
+      }
+    })
+    
     val nameCol = new TableColumn[Binding, String]("Name")
     nameCol.setCellValueFactory(new PropertyValueFactory[Binding, String]("name"))
     nameCol.setCellFactory(new Callback[TableColumn[Binding, String], TableCell[Binding, String]] {
       def call(column:TableColumn[Binding, String]):TableCell[Binding, String] = {
         new StringEditCell[Binding]
+      }
+    })
+    nameCol.setOnEditCommit(new EventHandler[CellEditEvent[Binding, String]] {
+      def handle(evt: CellEditEvent[Binding, String]) {
+        evt.getRowValue.setName(evt.getNewValue)
+        println("name col commit: " + evt.getNewValue)
+      }
+      override def toString = "name col event handler"
+    })
+    nameCol.setOnEditStart(new EventHandler[CellEditEvent[Binding, String]] {
+      def handle(p1: CellEditEvent[Binding, String]) {
+        println("name col edit start")
       }
     })
     nameCol.setMinWidth(200)
@@ -56,10 +78,21 @@ class LambdaSheet extends javafx.application.Application {
         new ExprEditCell[Binding]
       }
     })
+    exprCol.setOnEditCommit(new EventHandler[CellEditEvent[Binding, Expression]] {
+      def handle(evt: CellEditEvent[Binding, Expression]) {
+        evt.getRowValue.setExpr(evt.getNewValue)
+        println("expr col commit: " + evt.getNewValue)
+      }
+      override def toString = "expr col commit handler"
+    })
     exprCol.setMinWidth(200)
     tv.getColumns.add(exprCol)
 
     tv.setEditable(true)
+    
+    println(nameCol.getOnEditCommit)
+    println(exprCol.getOnEditCommit)
+    println(exprCol.getOnEditStart)
 
     box.getChildren.add(tv)
 
@@ -94,6 +127,12 @@ class LambdaSheet extends javafx.application.Application {
 
 abstract class EditableAsStringCell[S, T](var textField: TextField) extends TableCell[S, T] {
 
+  setOnMouseClicked(new EventHandler[MouseEvent] {
+    def handle(p1: MouseEvent) {
+      startEdit()
+    }
+  })
+  
   def this() = this(null)
 
   def parse(value: String): T
@@ -104,7 +143,9 @@ abstract class EditableAsStringCell[S, T](var textField: TextField) extends Tabl
     super.startEdit()
     textField = new TextField
     textField.setMinWidth(this.getWidth - this.getGraphicTextGap * 2)
-    textField.setText(serialize(this.getItem))
+    if(!isEmpty) {
+      textField.setText(serialize(getItem))
+    }
     textField.setOnAction(new EventHandler[ActionEvent] {
       def handle(actionEvent: ActionEvent) {
         commitEdit(parse(textField.getText))
@@ -115,9 +156,13 @@ abstract class EditableAsStringCell[S, T](var textField: TextField) extends Tabl
         if (keyEvent.getCode == KeyCode.ESCAPE) {
           cancelEdit()
         }
+        keyEvent.consume()
+        println(isFocused)
       }
     })
     this.setGraphic(textField)
+    textField.requestFocus()
+    println(textField.getCaretPosition)
     this.setContentDisplay(ContentDisplay.GRAPHIC_ONLY)
   }
 
@@ -129,7 +174,11 @@ abstract class EditableAsStringCell[S, T](var textField: TextField) extends Tabl
   }
 
   override def commitEdit(item: T) {
-    super.commitEdit(item)
+    // super.commitEdit(item)
+    updateItem(item, false)
+    cancelEdit()
+    // hack necessitated by seeming bug in JavaFX...
+    getTableColumn.getOnEditCommit.handle(new CellEditEvent[S, T](getTableView, new TablePosition(getTableView, this.getTableRow.getIndex, getTableColumn), new EventType[CellEditEvent[_, _]]("EDIT_COMMIT"), item))
     println("commit edit " + item)
   }
 
@@ -181,5 +230,7 @@ case class Binding(nameProperty:SimpleStringProperty, exprProperty:SimpleObjectP
   def setExpr(newExpr:Expression) {
     exprProperty.set(newExpr)
   }
+
+  var value:LambdaSheetVal = null
 
 }
